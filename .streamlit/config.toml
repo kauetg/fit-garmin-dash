@@ -1,0 +1,6 @@
+[theme]
+primaryColor = "#E4002B"           # Vermelho (destaque nos gráficos/botões)
+backgroundColor = "#FFFFFF"         # Branco (fundo)
+secondaryBackgroundColor = "#F5F5F5" # Cinza claro (cards)
+textColor = "#1a1a1a"              # Quase preto (texto)
+font = "sans serif"

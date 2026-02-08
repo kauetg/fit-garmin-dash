@@ -1,12 +1,9 @@
 import pandas as pd
-import os
+import pytz
 from fitparse import FitFile
-from datetime import datetime
+import os
 
-# Abre o arquivo .fit
-temp_fitfile = 'activities/21787457234_ACTIVITY.fit'
-
-
+MANILA_TZ = pytz.timezone('Asia/Manila')
 
 
 def parse_fit_to_dataframe(fit_input):
@@ -21,9 +18,7 @@ def parse_fit_to_dataframe(fit_input):
     else:
         fitfile = fit_input
 
-    # ========================================
     # PARTE 1: Extrair info geral do treino (SESSION)
-    # ========================================
     treino_info = {}
     for record in fitfile.get_messages('session'):
         data_dict = {}
@@ -31,8 +26,8 @@ def parse_fit_to_dataframe(fit_input):
             data_dict[data.name] = data.value
 
         treino_info = {
-            'data': data_dict.get('start_time').date() if data_dict.get('start_time') else None,
-            'inicio': data_dict.get('start_time'),
+            'data': data_dict.get('start_time').astimezone(MANILA_TZ).date() if data_dict.get('start_time') else None,
+            'inicio': data_dict.get('start_time').astimezone(MANILA_TZ) if data_dict.get('start_time') else None,
             'fim': data_dict.get('timestamp'),
             'duracao_total': data_dict.get('total_elapsed_time', 0),
             'fc_media': data_dict.get('avg_heart_rate', 0),
@@ -41,11 +36,9 @@ def parse_fit_to_dataframe(fit_input):
             'training_effect_anaerobico': data_dict.get('total_anaerobic_training_effect', 0),
             'calorias': data_dict.get('total_calories', 0),
         }
-        break  # só tem 1 session por treino
 
-    # ========================================
+        break
     # PARTE 2: Extrair FC por segundo (RECORD)
-    # ========================================
     records_fc = []
     for record in fitfile.get_messages('record'):
         data_dict = {}
@@ -60,9 +53,7 @@ def parse_fit_to_dataframe(fit_input):
 
     df_fc = pd.DataFrame(records_fc)
 
-    # ========================================
-    # PARTE 3: Processar SETS (igual antes)
-    # ========================================
+    # PARTE 3: Processar SETS
     all_sets = []
     for record in fitfile.get_messages('set'):
         data_dict = {}
@@ -90,9 +81,7 @@ def parse_fit_to_dataframe(fit_input):
         start_time = set_dict.get('start_time')
         timestamp = set_dict.get('timestamp')
 
-        # ========================================
-        # NOVO: Calcular FC média durante o set
-        # ========================================
+        # Calcular FC média durante o set
         fc_durante_set = None
         if len(df_fc) > 0 and start_time and timestamp:
             fc_no_set = df_fc[
@@ -103,15 +92,15 @@ def parse_fit_to_dataframe(fit_input):
                 fc_durante_set = fc_no_set['heart_rate'].mean()
 
         set_info = {
-            'data': start_time.date() if start_time else None,
-            'dia_semana': start_time.strftime('%A') if start_time else None,  # NOVO
+            'data': start_time.astimezone(MANILA_TZ).date() if start_time else None,
+            'dia_semana': start_time.strftime('%A') if start_time else None,
             'hora_inicio': start_time.time() if start_time else None,
             'exercicio': exercicio,
             'set_num': exercise_counters[exercicio],
             'reps': set_dict.get('repetitions', 0),
             'peso': set_dict.get('weight', 0.0),
             'duracao_set': set_dict.get('duration', 0.0),
-            'fc_media_set': round(fc_durante_set, 1) if fc_durante_set else None,  # NOVO
+            'fc_media_set': round(fc_durante_set, 1) if fc_durante_set else None,
         }
 
         # Próximo set ativo válido
@@ -151,43 +140,32 @@ def parse_fit_to_dataframe(fit_input):
     return df_sets, treino_info
 
 
-import os
-import pandas as pd
-
-
-def processar_semana(pasta='activities/'):
+def processar_semana(pasta='activities/Kaue/'):
     """
     Processa todos os .fit da pasta e retorna:
-    - df_todos_sets: DataFrame consolidado com TODOS os sets da semana
+    - df_todos_sets: DataFrame consolidado
     - treinos_info: lista com info de cada treino
     """
 
     todos_sets = []
     treinos_info = []
 
-    arquivos_fit = [f for f in os.listdir(pasta) if f.endswith('.fit')]
+    if not os.path.exists(pasta):
+        return pd.DataFrame(), []
 
-    print(f"📂 Encontrados {len(arquivos_fit)} arquivos .fit")
+    arquivos_fit = [f for f in os.listdir(pasta) if f.endswith('.fit')]
 
     for arquivo in sorted(arquivos_fit):
         caminho = os.path.join(pasta, arquivo)
-        print(f"  Processando {arquivo}...")
 
         try:
             df_sets, info_treino = parse_fit_to_dataframe(caminho)
-
-            # Adiciona identificador do arquivo
             df_sets['arquivo'] = arquivo
-
             todos_sets.append(df_sets)
             treinos_info.append(info_treino)
-
-            print(f"    ✅ {len(df_sets)} sets, {info_treino['duracao_total']:.0f}s, FC média {info_treino['fc_media']}")
-
         except Exception as e:
-            print(f"    ❌ Erro ao processar {arquivo}: {e}")
+            print(f"Erro ao processar {arquivo}: {e}")
 
-    # Concatena todos os DataFrames
     if todos_sets:
         df_completo = pd.concat(todos_sets, ignore_index=True)
         df_completo = df_completo.sort_values(['data', 'hora_inicio']).reset_index(drop=True)
@@ -196,21 +174,19 @@ def processar_semana(pasta='activities/'):
 
     return df_completo, treinos_info
 
+fitfile = FitFile("activities/Kaue/21787457234_ACTIVITY.fit")
 
-# ========================================
-# USO:
-# ========================================
-df_semana, info_treinos = processar_semana('activities/')
+print("\n=== DEBUG TIMESTAMPS ===")
+for record in fitfile.get_messages('session'):
+    data_dict = {}
+    for data in record:
+        data_dict[data.name] = data.value
 
-print("\n" + "=" * 60)
-print("📊 RESUMO DA SEMANA")
-print("=" * 60)
-print(f"Total de treinos: {len(info_treinos)}")
-print(f"Total de sets: {len(df_semana)}")
-print(f"Dias treinados: {df_semana['data'].nunique()}")
-
-print("\n📅 Treinos por dia:")
-print(df_semana.groupby(['data', 'dia_semana']).size())
-
-print("\n💪 Sets por exercício:")
-print(df_semana.groupby('exercicio')['set_num'].max().sort_values(ascending=False))
+    start_raw = data_dict.get('start_time')
+    print(f"start_time RAW do .fit: {start_raw}")
+    print(f"Tipo: {type(start_raw)}")
+    if start_raw:
+        print(f"Timezone do objeto: {start_raw.tzinfo}")
+        print(f"Com Manila TZ: {start_raw.astimezone(MANILA_TZ)}")
+        print(f"Date com Manila: {start_raw.astimezone(MANILA_TZ).date()}")
+    break
