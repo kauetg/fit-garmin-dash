@@ -6,9 +6,7 @@ from datetime import datetime
 # Abre o arquivo .fit
 temp_fitfile = 'activities/21787457234_ACTIVITY.fit'
 
-import pandas as pd
-from fitparse import FitFile
-from datetime import datetime
+
 
 
 def parse_fit_to_dataframe(fit_input):
